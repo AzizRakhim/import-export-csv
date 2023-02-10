@@ -1,11 +1,52 @@
 import { useState } from "react";
-import { useCSVReader, usePapaParse, useCSVDownloader } from "react-papaparse";
+import { useCSVReader, usePapaParse } from "react-papaparse";
 import "./App.css";
+import {
+  DataGrid,
+  GridColDef,
+  GridCsvExportOptions,
+  GridCsvGetRowsToExportParams,
+  GridToolbarContainer,
+  useGridApiContext,
+  gridFilteredSortedRowIdsSelector,
+} from "@mui/x-data-grid";
+import { Button, ButtonProps, createSvgIcon } from "@mui/material";
+
+const ExportIcon = createSvgIcon(
+  <path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2z" />,
+  "SaveAlt"
+);
+
+const getRowsFromAllPages = ({ apiRef }: GridCsvGetRowsToExportParams) =>
+  gridFilteredSortedRowIdsSelector(apiRef);
+
+const CustomToolbar = () => {
+  const apiRef = useGridApiContext();
+
+  const handleExport = (options: GridCsvExportOptions) =>
+    apiRef.current.exportDataAsCsv(options);
+
+  const buttonBaseProps: ButtonProps = {
+    color: "primary",
+    size: "small",
+    startIcon: <ExportIcon />,
+  };
+
+  return (
+    <GridToolbarContainer>
+      <Button
+        {...buttonBaseProps}
+        onClick={() => handleExport({ getRowsToExport: getRowsFromAllPages })}
+      >
+        Download all
+      </Button>
+    </GridToolbarContainer>
+  );
+};
 
 function App() {
   const { CSVReader } = useCSVReader();
   const { jsonToCSV } = usePapaParse();
-  const { CSVDownloader, Type } = useCSVDownloader();
 
   const [tableData, setTableData] = useState<any>([]);
   const [header, setHeader] = useState<any>([]);
@@ -16,12 +57,36 @@ function App() {
     console.log(csv);
   };
 
+  const columns: GridColDef[] = header.map((item: any) => ({
+    field: item,
+    headerName: item,
+    editable: true,
+    width: 300,
+  }));
+
   return (
     <div className="app">
       <CSVReader
         onUploadAccepted={(results: any) => {
-          setTableData(results.data.filter((data: any, i: number) => i !== 0));
-          setHeader(results.data[0]);
+          const notFirstData = results.data.filter(
+            (_: any, i: number) => i !== 0
+          );
+
+          const header = results.data[0];
+
+          const tempData = notFirstData.map((data: any, i: number) => {
+            const categoryPosts = data.reduce(
+              (acc: any, post: any, i: number) => {
+                return { ...acc, [header[i]]: post };
+              },
+              {}
+            );
+
+            return { id: i, ...categoryPosts };
+          });
+
+          setTableData(tempData);
+          setHeader(header);
         }}
       >
         {({ getRootProps, acceptedFile }: any) => (
@@ -42,58 +107,17 @@ function App() {
           <button onClick={saveFile} className="convert">
             JSON to CSV
           </button>
-          <CSVDownloader
-            type={Type.Button}
-            filename={"filename"}
-            bom={true}
-            data={tableData}
-            className="download"
-          >
-            Download
-          </CSVDownloader>
         </div>
       </div>
       {tableData.length ? (
-        <table>
-          <thead>
-            <tr>
-              {header.map((header: any, index: number) => (
-                <th key={index}>{header}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {tableData.map((data: any, index: number) => (
-              <tr key={index}>
-                {data.map((datum: any, i: number) => (
-                  <td key={i}>
-                    <input
-                      type="text"
-                      value={datum}
-                      className="input"
-                      onChange={(e: any) => {
-                        const tempData = tableData.map(
-                          (item: any, idx: number) => {
-                            if (idx === index) {
-                              item.map((el: any, _index: number) => {
-                                if (_index === i) {
-                                  return e.target.value;
-                                }
-                                return el;
-                              });
-                            }
-                            return item;
-                          }
-                        );
-                        setTableData(tempData);
-                      }}
-                    />
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div style={{ height: 600, width: "100%" }}>
+          <DataGrid
+            rows={tableData}
+            columns={columns}
+            experimentalFeatures={{ newEditingApi: true }}
+            components={{ Toolbar: CustomToolbar }}
+          />
+        </div>
       ) : (
         <div className="no-data">No data</div>
       )}
