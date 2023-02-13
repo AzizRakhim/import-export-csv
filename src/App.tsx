@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useCSVReader, usePapaParse } from "react-papaparse";
+import { useCallback, useMemo, useState } from "react";
+import { useCSVReader } from "react-papaparse";
 import "./App.css";
 import {
   DataGrid,
@@ -9,13 +9,11 @@ import {
   GridToolbarContainer,
   useGridApiContext,
   gridFilteredSortedRowIdsSelector,
+  GridCellEditCommitParams,
+  MuiEvent,
+  GridCellEditStopReasons,
+  GridRowModel,
 } from "@mui/x-data-grid";
-import { Button, ButtonProps, createSvgIcon } from "@mui/material";
-
-const ExportIcon = createSvgIcon(
-  <path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2z" />,
-  "SaveAlt"
-);
 
 const getRowsFromAllPages = ({ apiRef }: GridCsvGetRowsToExportParams) =>
   gridFilteredSortedRowIdsSelector(apiRef);
@@ -26,43 +24,93 @@ const CustomToolbar = () => {
   const handleExport = (options: GridCsvExportOptions) =>
     apiRef.current.exportDataAsCsv(options);
 
-  const buttonBaseProps: ButtonProps = {
-    color: "primary",
-    size: "small",
-    startIcon: <ExportIcon />,
-  };
-
   return (
     <GridToolbarContainer>
-      <Button
-        {...buttonBaseProps}
-        onClick={() => handleExport({ getRowsToExport: getRowsFromAllPages })}
+      <button
+        type="button"
+        className="button down-btn"
+        onClick={() => {
+          handleExport({ getRowsToExport: getRowsFromAllPages });
+        }}
       >
         Download all
-      </Button>
+      </button>
     </GridToolbarContainer>
   );
 };
 
 function App() {
   const { CSVReader } = useCSVReader();
-  const { jsonToCSV } = usePapaParse();
 
   const [tableData, setTableData] = useState<any>([]);
   const [header, setHeader] = useState<any>([]);
 
-  const saveFile = () => {
-    let csv = jsonToCSV(tableData);
+  const onButtonClick = (e: any, row: any) => {
+    e.stopPropagation();
 
-    console.log(csv);
+    setTableData((prev: any) => prev.filter((item: any) => item.id !== row.id));
   };
 
-  const columns: GridColDef[] = header.map((item: any) => ({
-    field: item,
-    headerName: item,
-    editable: true,
-    width: 300,
-  }));
+  const columns: GridColDef[] = useMemo(() => {
+    const temp = header.map((item: any) => ({
+      field: item,
+      headerName: item,
+      editable: true,
+      width: 400,
+    }));
+
+    return [
+      ...temp,
+      {
+        field: "actions",
+        headerName: "Actions",
+        width: 500,
+        headerAlign: "right",
+        align: "right",
+        renderCell: (params) => {
+          return (
+            <button
+              type="button"
+              className="button"
+              onClick={(e) => onButtonClick(e, params.row)}
+            >
+              Delete
+            </button>
+          );
+        },
+      },
+    ];
+  }, [header]);
+
+  const handleAddRow = () => {
+    setTableData((prevRows: any) => [
+      { id: Date.now(), username: "Example...", fullName: "Example..." },
+      ...prevRows,
+    ]);
+  };
+
+  const processRowUpdate = useCallback(
+    (newRow: GridRowModel) => {
+      // Make the HTTP request to save in the backend
+
+      const temp = tableData.map((item: any) => {
+        if (item.id === newRow.id) {
+          return newRow;
+        }
+
+        return item;
+      });
+
+      setTableData(temp);
+
+      return newRow;
+    },
+    [tableData]
+  );
+
+  const handleProcessRowUpdateError = useCallback((error: Error) => {
+    console.log(error.message);
+  }, []);
 
   return (
     <div className="app">
@@ -89,35 +137,35 @@ function App() {
           setHeader(header);
         }}
       >
-        {({ getRootProps, acceptedFile }: any) => (
-          <>
+        {({ getRootProps }: any) => (
+          <div style={{ position: "relative" }}>
             <div className="btn-container">
               <button type="button" {...getRootProps()} className="button">
                 Browse file
               </button>
-              <div>{acceptedFile && acceptedFile.name}</div>
             </div>
             <hr />
-          </>
+          </div>
         )}
       </CSVReader>
-      <div className="header-container">
-        <h2>User Table</h2>
-        <div className="btn-container">
-          <button onClick={saveFile} className="convert">
-            JSON to CSV
-          </button>
-        </div>
-      </div>
       {tableData.length ? (
-        <div style={{ height: 600, width: "100%" }}>
-          <DataGrid
-            rows={tableData}
-            columns={columns}
-            experimentalFeatures={{ newEditingApi: true }}
-            components={{ Toolbar: CustomToolbar }}
-          />
-        </div>
+        <>
+          <div className="btn-holder">
+            <button type="button" onClick={handleAddRow} className="button">
+              Add a row
+            </button>
+          </div>
+          <div style={{ height: 600, width: "100%" }}>
+            <DataGrid
+              rows={tableData}
+              columns={columns}
+              experimentalFeatures={{ newEditingApi: true }}
+              components={{ Toolbar: CustomToolbar }}
+              processRowUpdate={processRowUpdate}
+              onProcessRowUpdateError={handleProcessRowUpdateError}
+            />
+          </div>
+        </>
       ) : (
         <div className="no-data">No data</div>
       )}

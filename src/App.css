@@ -123,3 +123,15 @@ tr:nth-child(even) {
   padding: 10px;
   width: calc(100% - 20px);
 }
+
+.btn-holder {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+.down-btn {
+  position: absolute;
+  top: -48px;
+  right: 100px;
+}
